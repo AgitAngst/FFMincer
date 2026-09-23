@@ -193,7 +193,7 @@ dependencies = [
 [[package]]
 name = "anvil-ui"
 version = "0.1.0"
-source = "git+https://github.com/AgitAngst/Anvil?rev=ebb7f92cb65da53b66238d91bf3a81afd1105ef8#ebb7f92cb65da53b66238d91bf3a81afd1105ef8"
+source = "git+https://github.com/AgitAngst/Anvil?tag=kit-v0.2.0#ebb7f92cb65da53b66238d91bf3a81afd1105ef8"
 dependencies = [
  "eframe",
  "windows-sys 0.61.2",
@@ -202,7 +202,7 @@ dependencies = [
 [[package]]
 name = "anvil-update"
 version = "0.1.0"
-source = "git+https://github.com/AgitAngst/Anvil?rev=ebb7f92cb65da53b66238d91bf3a81afd1105ef8#ebb7f92cb65da53b66238d91bf3a81afd1105ef8"
+source = "git+https://github.com/AgitAngst/Anvil?tag=kit-v0.2.0#ebb7f92cb65da53b66238d91bf3a81afd1105ef8"
 dependencies = [
  "anvil-ui",
  "eframe",
