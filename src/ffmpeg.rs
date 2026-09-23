@@ -46,10 +46,10 @@ pub struct JobSettings {
     pub preset: String,        // пусто = не передавать -preset
     pub resolution: String,    // пусто = не менять разрешение, иначе "1920x1080"
     pub hw_decode: bool,
-    pub loudnorm: bool,        // нормализация громкости (-af loudnorm), только при перекодировании звука
-    pub faststart: bool,       // -movflags +faststart, только для mp4/mov/m4a
-    pub keep_metadata: bool,   // -map_metadata 0 (копировать метаданные исходника)
-    pub threads: u32,          // -threads N (0 = авто)
+    pub loudnorm: bool,      // нормализация громкости (-af loudnorm), только при перекодировании звука
+    pub faststart: bool,     // -movflags +faststart, только для mp4/mov/m4a
+    pub keep_metadata: bool, // -map_metadata 0 (копировать метаданные исходника)
+    pub threads: u32,        // -threads N (0 = авто)
 }
 
 impl Default for JobSettings {
@@ -101,47 +101,42 @@ pub fn probe_info(input: &Path, ffprobe: &str) -> MediaInfo {
     // По блоку [STREAM]…[/STREAM] на каждый поток, поля в виде key=value
     // (порядок ключей у ffprobe внутренний, поэтому позиционный разбор не годится).
     let mut cmd = Command::new(ffprobe_exe(ffprobe));
-    cmd.args([
-        "-v", "error",
-        "-show_entries", "stream=codec_type,codec_name,width,height",
-        "-of", "default",
-    ])
-    .arg(input);
+    cmd.args(["-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height", "-of", "default"])
+        .arg(input);
     hide_window(&mut cmd);
     let streams = cmd.output();
 
-    if let Ok(out) = streams {
-        if out.status.success() {
-            let text = String::from_utf8_lossy(&out.stdout);
-            let (mut codec_type, mut codec_name, mut width, mut height) =
-                (String::new(), String::new(), None, None);
+    if let Ok(out) = streams
+        && out.status.success()
+    {
+        let text = String::from_utf8_lossy(&out.stdout);
+        let (mut codec_type, mut codec_name, mut width, mut height) = (String::new(), String::new(), None, None);
 
-            for line in text.lines() {
-                let line = line.trim();
-                if line == "[/STREAM]" {
-                    match codec_type.as_str() {
-                        "video" if info.v_codec.is_none() => {
-                            info.v_codec = (!codec_name.is_empty()).then(|| codec_name.clone());
-                            info.width = width;
-                            info.height = height;
-                        }
-                        "audio" if info.a_codec.is_none() => {
-                            info.a_codec = (!codec_name.is_empty()).then(|| codec_name.clone());
-                        }
-                        _ => {}
+        for line in text.lines() {
+            let line = line.trim();
+            if line == "[/STREAM]" {
+                match codec_type.as_str() {
+                    "video" if info.v_codec.is_none() => {
+                        info.v_codec = (!codec_name.is_empty()).then(|| codec_name.clone());
+                        info.width = width;
+                        info.height = height;
                     }
-                    codec_type.clear();
-                    codec_name.clear();
-                    width = None;
-                    height = None;
-                } else if let Some((key, value)) = line.split_once('=') {
-                    match key {
-                        "codec_type" => codec_type = value.to_string(),
-                        "codec_name" => codec_name = value.to_string(),
-                        "width" => width = value.parse().ok(),
-                        "height" => height = value.parse().ok(),
-                        _ => {}
+                    "audio" if info.a_codec.is_none() => {
+                        info.a_codec = (!codec_name.is_empty()).then(|| codec_name.clone());
                     }
+                    _ => {}
+                }
+                codec_type.clear();
+                codec_name.clear();
+                width = None;
+                height = None;
+            } else if let Some((key, value)) = line.split_once('=') {
+                match key {
+                    "codec_type" => codec_type = value.to_string(),
+                    "codec_name" => codec_name = value.to_string(),
+                    "width" => width = value.parse().ok(),
+                    "height" => height = value.parse().ok(),
+                    _ => {}
                 }
             }
         }
@@ -177,9 +172,9 @@ pub fn compute_output_path(
     } else {
         format!("{stem}{template}")
     };
-    let dir = output_dir.map(|d| d.to_path_buf()).unwrap_or_else(|| {
-        input.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."))
-    });
+    let dir = output_dir
+        .map(|d| d.to_path_buf())
+        .unwrap_or_else(|| input.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from(".")));
 
     let base = dir.join(format!("{name}.{ext}"));
     if overwrite {
@@ -201,21 +196,13 @@ pub fn compute_output_path(
 }
 
 fn ffprobe_exe(ffprobe: &str) -> &str {
-    if ffprobe.trim().is_empty() {
-        "ffprobe"
-    } else {
-        ffprobe.trim()
-    }
+    if ffprobe.trim().is_empty() { "ffprobe" } else { ffprobe.trim() }
 }
 
 fn probe_duration(input: &Path, ffprobe: &str) -> Option<f64> {
     let mut cmd = Command::new(ffprobe_exe(ffprobe));
-    cmd.args([
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-    ])
-    .arg(input);
+    cmd.args(["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1"])
+        .arg(input);
     hide_window(&mut cmd);
     let output = cmd.output().ok()?;
 
@@ -325,11 +312,7 @@ pub fn run_queue(
     ffprobe_path: String,
     low_priority: bool,
 ) {
-    let ffmpeg_exe = if ffmpeg_path.trim().is_empty() {
-        "ffmpeg".to_string()
-    } else {
-        ffmpeg_path.trim().to_string()
-    };
+    let ffmpeg_exe = if ffmpeg_path.trim().is_empty() { "ffmpeg".to_string() } else { ffmpeg_path.trim().to_string() };
 
     for item in items {
         if stop_flag.load(Ordering::SeqCst) {
@@ -356,20 +339,19 @@ pub fn run_queue(
 
         if let Some(stderr) = child.stderr.take() {
             let reader = BufReader::new(stderr);
-            for line in reader.lines().flatten() {
+            for line in reader.lines().map_while(Result::ok) {
                 if stop_flag.load(Ordering::SeqCst) {
                     break;
                 }
                 if let Some(pos) = line.find("time=") {
                     let rest = &line[pos + 5..];
                     let time_str = rest.split_whitespace().next().unwrap_or("");
-                    if let Some(secs) = parse_time_to_secs(time_str) {
-                        if let Some(d) = duration {
-                            if d > 0.0 {
-                                let pct = ((secs / d) * 100.0).clamp(0.0, 100.0) as f32;
-                                let _ = tx.send(Event::Progress(item.id, pct));
-                            }
-                        }
+                    if let Some(secs) = parse_time_to_secs(time_str)
+                        && let Some(d) = duration
+                        && d > 0.0
+                    {
+                        let pct = ((secs / d) * 100.0).clamp(0.0, 100.0) as f32;
+                        let _ = tx.send(Event::Progress(item.id, pct));
                     }
                 }
             }

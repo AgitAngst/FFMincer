@@ -1,0 +1,18 @@
+# Выпуск FFMincer — по тегу vX.Y.Z (ставит пользователь или мастер выпуска Anvil).
+# Общий workflow семьи Anvil: сборка под Windows, ffmincer-X.Y.Z-windows-x64.zip, SHA256SUMS,
+# GitHub Release с заметками из аннотации тега. Коммит — тот же, что у anvil-ui в Cargo.toml.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: AgitAngst/Anvil/.github/workflows/rust-release.yml@ebb7f92cb65da53b66238d91bf3a81afd1105ef8
+    with:
+      app: ffmincer
+      bins: ffmincer

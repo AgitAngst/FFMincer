@@ -1,16 +1,27 @@
 [package]
 name = "ffmincer"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+description = "Audio and video converter on top of ffmpeg"
+license = "MIT"
+repository = "https://github.com/AgitAngst/FFMincer"
+publish = false
 
 [[bin]]
 name = "ffmincer"
 path = "src/main.rs"
 
 [dependencies]
-eframe = "0.27"
-egui = "0.27"
-rfd = "0.14"
+# Общий вид и обновления семьи Anvil. Правка набора на живую — `[patch]` в .cargo/config.toml (не в git).
+anvil-ui = { git = "https://github.com/AgitAngst/Anvil", rev = "ebb7f92cb65da53b66238d91bf3a81afd1105ef8" }
+anvil-update = { git = "https://github.com/AgitAngst/Anvil", rev = "ebb7f92cb65da53b66238d91bf3a81afd1105ef8" }
+eframe = "0.36.2"
+rfd = "0.17.2"
+
+[build-dependencies]
+anvil-ui = { git = "https://github.com/AgitAngst/Anvil", rev = "ebb7f92cb65da53b66238d91bf3a81afd1105ef8" }
+image = { version = "0.25.10", default-features = false, features = ["png", "ico"] }
+winresource = "0.1"
 
 [profile.release]
 opt-level = 3

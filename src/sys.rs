@@ -1,4 +1,4 @@
-// Взаимодействие с ОС: автозапуск, проверка/установка ffmpeg, системная тема,
+// Взаимодействие с ОС: автозапуск, проверка/установка ffmpeg,
 // звук и действия по завершении очереди. Всё через внешние утилиты, без доп. зависимостей.
 
 use std::path::Path;
@@ -54,9 +54,7 @@ pub fn set_autostart(enabled: bool) -> bool {
                 return false;
             };
             let val = format!("\"{}\"", exe.display());
-            cmd.args([
-                "add", RUN_KEY, "/v", AUTOSTART_NAME, "/t", "REG_SZ", "/d", &val, "/f",
-            ]);
+            cmd.args(["add", RUN_KEY, "/v", AUTOSTART_NAME, "/t", "REG_SZ", "/d", &val, "/f"]);
         } else {
             cmd.args(["delete", RUN_KEY, "/v", AUTOSTART_NAME, "/f"]);
         }
@@ -68,7 +66,8 @@ pub fn set_autostart(enabled: bool) -> bool {
 }
 
 /// Тихая установка ffmpeg через winget (блокирующая — вызывать в отдельном потоке).
-pub fn install_ffmpeg() -> Result<String, String> {
+/// Ошибка — короткая строка для показа как есть: код winget или системная ошибка запуска.
+pub fn install_ffmpeg() -> Result<(), String> {
     let mut cmd = Command::new("winget");
     cmd.args([
         "install",
@@ -81,35 +80,10 @@ pub fn install_ffmpeg() -> Result<String, String> {
     ]);
     hidden(&mut cmd);
     match cmd.output() {
-        Ok(o) if o.status.success() => Ok("ffmpeg установлен".into()),
-        Ok(o) => Err(format!("winget код {}", o.status.code().unwrap_or(-1))),
-        Err(e) => Err(format!("нет winget: {e}")),
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => Err(format!("winget: {}", o.status.code().unwrap_or(-1))),
+        Err(e) => Err(format!("winget: {e}")),
     }
-}
-
-/// Тёмная ли системная тема (Windows). По умолчанию считаем тёмной.
-pub fn system_is_dark() -> bool {
-    #[cfg(windows)]
-    {
-        let mut cmd = Command::new("reg");
-        cmd.args([
-            "query",
-            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-            "/v",
-            "AppsUseLightTheme",
-        ]);
-        hidden(&mut cmd);
-        if let Ok(out) = cmd.output() {
-            let text = String::from_utf8_lossy(&out.stdout);
-            if let Some(idx) = text.find("0x") {
-                let hex: String = text[idx + 2..].chars().take_while(|c| c.is_ascii_hexdigit()).collect();
-                if let Ok(v) = u32::from_str_radix(&hex, 16) {
-                    return v == 0; // 0 = приложения используют тёмную тему
-                }
-            }
-        }
-    }
-    true
 }
 
 pub fn open_folder(path: &Path) {
