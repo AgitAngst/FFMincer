@@ -4,6 +4,8 @@
 mod app;
 mod config;
 mod ffmpeg;
+mod icon;
+mod mark;
 mod sys;
 mod texts;
 mod ui;
@@ -19,7 +21,7 @@ fn main() -> eframe::Result<()> {
     let mut viewport = eframe::egui::ViewportBuilder::default()
         .with_title("FFMincer")
         .with_min_inner_size([760.0, 480.0])
-        .with_icon(std::sync::Arc::new(anvil_ui::appicon::icon_data(app::ACCENT, anvil_ui::Icon::Film)))
+        .with_icon(std::sync::Arc::new(icon::window()))
         .with_drag_and_drop(true);
     match config::load_geometry() {
         Some([w, h, x, y]) => {
