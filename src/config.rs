@@ -117,10 +117,20 @@ fn parse(text: &str) -> AppConfig {
         c.name_template = "{name}".into();
     }
     c.geometry = match (w, h, x, y) {
-        (Some(w), Some(h), Some(x), Some(y)) => Some([w, h, x, y]),
+        (Some(w), Some(h), Some(x), Some(y)) => Some([w, h, x, y]).filter(sane_geometry),
         _ => None,
     };
     c
+}
+
+/// Годится ли геометрия окна для запоминания. Свёрнутое окно Windows «живёт» в точке около
+/// (−32000, −32000): запомнить её — значит при следующем запуске открыть окно за краем экрана.
+pub fn sane_geometry(g: &[f32; 4]) -> bool {
+    let [w, h, x, y] = *g;
+    (300.0..=10_000.0).contains(&w)
+        && (200.0..=10_000.0).contains(&h)
+        && (-10_000.0..=20_000.0).contains(&x)
+        && (-10_000.0..=20_000.0).contains(&y)
 }
 
 /// Геометрия окна для билдера в `main.rs` (чтобы окно сразу открывалось нужного размера).
@@ -190,6 +200,18 @@ mod tests {
         assert!(c.post_action == PostAction::OpenFolder);
         assert_eq!(c.threads, 4);
         assert_eq!(c.geometry, Some([900.0, 700.0, 10.0, 20.0]));
+    }
+
+    #[test]
+    fn offscreen_geometry_is_dropped() {
+        let minimized = "win_w=900
+win_h=700
+win_x=-32000
+win_y=-32000
+";
+        assert_eq!(parse(minimized).geometry, None, "координаты свёрнутого окна не запоминаем");
+        assert!(sane_geometry(&[900.0, 700.0, -1200.0, 40.0]), "второй монитор слева — нормально");
+        assert!(!sane_geometry(&[10.0, 10.0, 0.0, 0.0]));
     }
 
     #[test]

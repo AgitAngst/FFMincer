@@ -5,7 +5,7 @@
 
 use anvil_ui::Lang;
 
-use crate::ffmpeg::MediaInfo;
+use crate::ffmpeg::{Failure, MediaInfo};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Preset {
@@ -237,6 +237,34 @@ pub fn format_bitrate(kbps: u32, kind: BitrateKind) -> String {
             } else {
                 format!("{:.1} Mbps", kbps as f64 / 1000.0)
             }
+        }
+    }
+}
+
+/// Причина ошибки задания: коротко для строки очереди и подробно для подсказки при наведении.
+pub fn failure_text(failure: &Failure, lang: Lang) -> (String, String) {
+    match failure {
+        Failure::Spawn(e) => {
+            let text = format!("{}: {e}", tip(lang, "не удалось запустить ffmpeg", "could not start ffmpeg"));
+            (text.clone(), text)
+        }
+        Failure::Exit(code, message) => {
+            let head = match code {
+                Some(c) => format!("{} {c}", tip(lang, "ffmpeg завершился с кодом", "ffmpeg exited with code")),
+                None => tip(lang, "ffmpeg завершился с ошибкой", "ffmpeg failed").to_owned(),
+            };
+            // В строке — последняя строка сообщения ffmpeg (самая содержательная), в подсказке — всё.
+            let last = message.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+            let short = if last.is_empty() { head.clone() } else { last.to_owned() };
+            let full = if message.trim().is_empty() {
+                head
+            } else {
+                format!(
+                    "{head}
+{message}"
+                )
+            };
+            (short, full)
         }
     }
 }

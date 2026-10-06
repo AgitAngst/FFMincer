@@ -192,17 +192,19 @@ dependencies = [
 
 [[package]]
 name = "anvil-ui"
-version = "0.1.0"
-source = "git+https://github.com/AgitAngst/Anvil?tag=kit-v0.2.0#ebb7f92cb65da53b66238d91bf3a81afd1105ef8"
+version = "0.6.1"
+source = "git+https://github.com/AgitAngst/Anvil?tag=kit-v0.6.1#216d62625a1f4f71053bfa8b37c54c364adab234"
 dependencies = [
+ "anvil-wallpaper",
  "eframe",
+ "raw-window-handle",
  "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "anvil-update"
-version = "0.1.0"
-source = "git+https://github.com/AgitAngst/Anvil?tag=kit-v0.2.0#ebb7f92cb65da53b66238d91bf3a81afd1105ef8"
+version = "0.6.1"
+source = "git+https://github.com/AgitAngst/Anvil?tag=kit-v0.6.1#216d62625a1f4f71053bfa8b37c54c364adab234"
 dependencies = [
  "anvil-ui",
  "eframe",
@@ -211,6 +213,11 @@ dependencies = [
  "sha2",
  "zip",
 ]
+
+[[package]]
+name = "anvil-wallpaper"
+version = "0.6.1"
+source = "git+https://github.com/AgitAngst/Anvil?tag=kit-v0.6.1#216d62625a1f4f71053bfa8b37c54c364adab234"
 
 [[package]]
 name = "arboard"
@@ -1182,7 +1189,7 @@ checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 
 [[package]]
 name = "ffmincer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anvil-ui",
  "anvil-update",

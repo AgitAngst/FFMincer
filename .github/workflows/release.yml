@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   release:
-    uses: AgitAngst/Anvil/.github/workflows/rust-release.yml@kit-v0.2.0
+    uses: AgitAngst/Anvil/.github/workflows/rust-release.yml@kit-v0.6.1
     with:
       app: ffmincer
       bins: ffmincer

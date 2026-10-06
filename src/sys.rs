@@ -1,7 +1,7 @@
 // Взаимодействие с ОС: автозапуск, проверка/установка ffmpeg,
 // звук и действия по завершении очереди. Всё через внешние утилиты, без доп. зависимостей.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Скрыть консольное окно дочернего процесса (иначе мигает при скрытой консоли).
@@ -18,10 +18,38 @@ fn hidden(_cmd: &mut Command) {}
 pub const AUTOSTART_NAME: &str = "FFMincer";
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 
+/// Есть ли исполняемый файл `name` в папках PATH текущего процесса.
+fn on_path(name: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|paths| {
+        std::env::split_paths(&paths).any(|dir| dir.join(format!("{name}.exe")).is_file() || dir.join(name).is_file())
+    })
+}
+
+/// Что запускать для `name` (ffmpeg / ffprobe): путь из настроек; иначе из PATH; иначе из папки
+/// ссылок WinGet. После тихой установки через winget PATH уже запущенного процесса не обновляется —
+/// без этой папки приложение не увидело бы только что поставленный ffmpeg до перезапуска.
+pub fn resolve_tool(configured: &str, name: &str) -> String {
+    let configured = configured.trim();
+    if !configured.is_empty() {
+        return configured.to_string();
+    }
+    if !on_path(name)
+        && let Some(local) = std::env::var_os("LOCALAPPDATA")
+    {
+        let link: PathBuf = [local.as_os_str(), "Microsoft".as_ref(), "WinGet".as_ref(), "Links".as_ref()]
+            .iter()
+            .collect::<PathBuf>()
+            .join(format!("{name}.exe"));
+        if link.is_file() {
+            return link.display().to_string();
+        }
+    }
+    name.to_string()
+}
+
 /// Первая строка вывода `ffmpeg -version`, если ffmpeg доступен.
 pub fn ffmpeg_version(ffmpeg: &str) -> Option<String> {
-    let exe = if ffmpeg.trim().is_empty() { "ffmpeg" } else { ffmpeg.trim() };
-    let mut cmd = Command::new(exe);
+    let mut cmd = Command::new(resolve_tool(ffmpeg, "ffmpeg"));
     cmd.arg("-version");
     hidden(&mut cmd);
     let out = cmd.output().ok()?;

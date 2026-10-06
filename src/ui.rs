@@ -2,13 +2,16 @@
 // настройки и «О программе».
 
 use anvil_ui::chrome::{self, AboutAction, AppInfo};
+use anvil_ui::motion::widgets as fx;
+use anvil_ui::motion::{self, Motion};
 use anvil_ui::theme::radius;
 use anvil_ui::widgets as w;
 use anvil_ui::{Icon, Kind, Lang, Palette, Tone};
-use eframe::egui::{self, Margin, RichText, Stroke, Ui};
+use eframe::egui::{self, Id, Margin, RichText, Stroke, Ui};
 
 use crate::app::{self, App, JobStatus};
 use crate::config::PostAction;
+use crate::ffmpeg;
 use crate::texts::{self, BitrateKind, Preset, Tr, tip};
 
 fn info(lang: Lang) -> AppInfo {
@@ -28,9 +31,9 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
     let hovering_files = ctx.input(|i| !i.raw.hovered_files.is_empty());
 
     let header_h = top_bar(app, ui, lang);
-    let actions_h = actions(app, ui, tr);
+    let actions_h = actions(app, ui, tr, lang);
     let settings_content_h = conversion_panel(app, ui, tr, lang);
-    queue(app, ui, tr, hovering_files);
+    queue(app, ui, tr, lang, hovering_files);
 
     startup_geometry(app, &ctx, header_h + actions_h, settings_content_h);
     settings_dialog(app, &ctx, lang);
@@ -81,7 +84,7 @@ fn top_bar(app: &mut App, ui: &mut Ui, lang: Lang) -> f32 {
 }
 
 /// Низ окна: общий прогресс и кнопки очереди. Возвращает высоту.
-fn actions(app: &mut App, ui: &mut Ui, tr: &Tr) -> f32 {
+fn actions(app: &mut App, ui: &mut Ui, tr: &Tr, lang: Lang) -> f32 {
     let p = Palette::of(ui);
     egui::Panel::bottom("actions")
         .frame(
@@ -91,7 +94,7 @@ fn actions(app: &mut App, ui: &mut Ui, tr: &Tr) -> f32 {
                 .stroke(Stroke::new(1.0, p.border)),
         )
         .show(ui, |ui| {
-            // Общий прогресс по всей очереди.
+            // Общий прогресс по всей очереди: выезжает, когда работа началась, и плавно уходит.
             let total = app.jobs.len();
             let mut progress_sum = 0.0f32;
             for job in &app.jobs {
@@ -101,8 +104,9 @@ fn actions(app: &mut App, ui: &mut Ui, tr: &Tr) -> f32 {
                     JobStatus::Pending => {}
                 }
             }
-            if total > 0 && (app.processing || progress_sum > 0.0) {
-                let overall = progress_sum / total as f32;
+            let show_overall = total > 0 && (app.processing || progress_sum > 0.0);
+            let overall = if total > 0 { progress_sum / total as f32 } else { 0.0 };
+            fx::reveal(ui, "overall-progress", show_overall, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(tr.overall).color(p.weak));
                     let width = (ui.available_width() - 60.0).max(60.0);
@@ -110,7 +114,7 @@ fn actions(app: &mut App, ui: &mut Ui, tr: &Tr) -> f32 {
                     ui.label(RichText::new(format!("{:.0}%", overall * 100.0)).color(p.text));
                 });
                 ui.add_space(4.0);
-            }
+            });
 
             ui.horizontal(|ui| {
                 let pending_count = app.jobs.iter().filter(|j| matches!(j.status, JobStatus::Pending)).count();
@@ -129,13 +133,19 @@ fn actions(app: &mut App, ui: &mut Ui, tr: &Tr) -> f32 {
                 {
                     app.cancel_queue();
                 }
-                let any_done = app.jobs.iter().any(|j| matches!(j.status, JobStatus::Done));
+                let any_done = app.jobs.iter().any(|j| matches!(j.status, JobStatus::Done | JobStatus::Failed(_)));
                 if ui.add_enabled_ui(any_done, |ui| w::button(ui, Kind::Ghost, None, tr.clear_finished)).inner.clicked()
                 {
                     app.clear_finished();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(RichText::new(format!("{}{}", tr.queued, pending_count)).color(p.weak));
+                    // Пока идёт работа — живая точка «процесс идёт». В покое её нет и кадров она не просит.
+                    if app.processing {
+                        ui.add_space(10.0);
+                        ui.label(RichText::new(tip(lang, "Идёт конвертация", "Converting")).color(p.weak));
+                        fx::live_dot(ui, Tone::Success);
+                    }
                 });
             });
         })
@@ -203,6 +213,7 @@ fn conversion(app: &mut App, ui: &mut Ui, tr: &Tr, lang: Lang) {
     }
 
     section(ui, tr.video_codec);
+    let codec_before = app.settings.video_codec.clone();
     egui::ComboBox::from_id_salt("video_codec")
         .width(ui.available_width())
         .selected_text(app.settings.video_codec.clone())
@@ -219,10 +230,17 @@ fn conversion(app: &mut App, ui: &mut Ui, tr: &Tr, lang: Lang) {
             "How video is encoded. libx* (CPU) give CRF-based quality; *_nvenc — GPU speed by bitrate; copy — no re-encode; none — drop video.",
         ));
 
+    // Пресет p5 от NVENC у libx264 (и наоборот) — «invalid preset»: при смене кодека подставляем свой.
+    if app.settings.video_codec != codec_before && !ffmpeg::preset_fits(&app.settings.video_codec, &app.settings.preset)
+    {
+        app.settings.preset = ffmpeg::default_preset(&app.settings.video_codec).into();
+    }
+
     let video_active = !matches!(app.settings.video_codec.as_str(), "none" | "copy");
     let is_nvenc = app.settings.video_codec.ends_with("_nvenc");
 
-    if video_active {
+    // Параметры видео раскрываются и сворачиваются плавно, а не прыгают при смене кодека.
+    fx::reveal(ui, "video-options", video_active, |ui| {
         w::switch(ui, &mut app.settings.hw_decode, tr.hw_decode).on_hover_text(tip(
             lang,
             "Декодировать вход на GPU (CUDA).\nХорошо: ускоряет NVENC на тяжёлых исходниках.\nПлохо: с редкими кодеками/фильтрами может дать ошибку — тогда выключи.",
@@ -252,15 +270,16 @@ fn conversion(app: &mut App, ui: &mut Ui, tr: &Tr, lang: Lang) {
         bitrate_control(ui, tr, lang, tr.video_bitrate, &mut app.settings.video_bitrate, BitrateKind::Video);
         hint(ui, tr.video_bitrate_hint);
 
-        if app.settings.video_bitrate.trim().is_empty() && !is_nvenc {
+        let crf_open = app.settings.video_bitrate.trim().is_empty() && !is_nvenc;
+        fx::reveal(ui, "crf", crf_open, |ui| {
             field(ui, tr.crf);
             ui.add(egui::Slider::new(&mut app.settings.crf, 0..=51)).on_hover_text(tip(
                 lang,
                 "Постоянное качество для CPU-кодеков. Меньше = лучше и больше файл.\nХорошо: 18–23 (x264), 20–26 (x265).\nПлохо: 0 (огромный файл), 35+ (мыло).",
                 "Constant quality for CPU codecs. Lower = better and bigger file.\nGood: 18–23 (x264), 20–26 (x265).\nBad: 0 (huge file), 35+ (mushy).",
             ));
-        }
-    }
+        });
+    });
 
     section(ui, tr.audio_codec);
     egui::ComboBox::from_id_salt("audio_codec")
@@ -279,14 +298,15 @@ fn conversion(app: &mut App, ui: &mut Ui, tr: &Tr, lang: Lang) {
             "How audio is encoded. aac/mp3 — compatibility; opus — best sound at low bitrate; flac — lossless; copy — no re-encode; none — drop audio.",
         ));
 
-    if !matches!(app.settings.audio_codec.as_str(), "none" | "copy") {
+    let audio_active = !matches!(app.settings.audio_codec.as_str(), "none" | "copy");
+    fx::reveal(ui, "audio-options", audio_active, |ui| {
         bitrate_control(ui, tr, lang, tr.audio_bitrate, &mut app.settings.audio_bitrate, BitrateKind::Audio);
         w::switch(ui, &mut app.settings.loudnorm, tr.loudnorm).on_hover_text(tip(
             lang,
             "Приводит громкость к стандарту вещания EBU R128 (-af loudnorm).\nХорошо: разнобой по громкости в подборке роликов/музыки.\nПлохо: уже смастеренный трек — можно испортить динамику. Не работает с кодеком copy.",
             "Brings loudness to the EBU R128 broadcast standard (-af loudnorm).\nGood: a batch of clips/music with uneven volume.\nBad: an already-mastered track — may squash dynamics. Doesn't work with the copy codec.",
         ));
-    }
+    });
 
     section(ui, tr.container);
     let mut container_changed = false;
@@ -314,13 +334,14 @@ fn conversion(app: &mut App, ui: &mut Ui, tr: &Tr, lang: Lang) {
         app.recompute_pending_outputs();
     }
 
-    if matches!(app.container_ext.as_str(), "mp4" | "mov" | "m4a") {
+    let faststart_open = matches!(app.container_ext.as_str(), "mp4" | "mov" | "m4a");
+    fx::reveal(ui, "faststart", faststart_open, |ui| {
         w::switch(ui, &mut app.settings.faststart, tr.faststart).on_hover_text(tip(
             lang,
             "Переносит индекс файла (moov atom) в начало — видео начинает играть до полной загрузки (-movflags +faststart).\nХорошо: mp4 для сайта/стриминга.\nПлохо: смысла нет для локальных файлов, но и не вредит.",
             "Moves the file index (moov atom) to the front — video starts playing before it's fully downloaded (-movflags +faststart).\nGood: mp4 for a website/streaming.\nBad: pointless for local-only files, but harmless.",
         ));
-    }
+    });
 
     let folder_tip = tip(
         lang,
@@ -413,7 +434,7 @@ fn bitrate_control(ui: &mut Ui, tr: &Tr, lang: Lang, label: &str, value: &mut St
 }
 
 /// Середина: баннер обновления, «Добавить файлы…» и очередь.
-fn queue(app: &mut App, ui: &mut Ui, tr: &Tr, hovering_files: bool) {
+fn queue(app: &mut App, ui: &mut Ui, tr: &Tr, lang: Lang, hovering_files: bool) {
     let p = Palette::of(ui);
     egui::CentralPanel::no_frame().frame(egui::Frame::new().fill(p.bg).inner_margin(Margin::symmetric(20, 16))).show(
         ui,
@@ -435,11 +456,11 @@ fn queue(app: &mut App, ui: &mut Ui, tr: &Tr, hovering_files: bool) {
             });
             ui.add_space(10.0);
 
-            let (fill, stroke) = if hovering_files {
-                (p.soft(p.accent), Stroke::new(1.5, p.accent))
-            } else {
-                (p.card, Stroke::new(1.0, p.border))
-            };
+            // Файл над окном: рамка зоны броска плавно наливается цветом акцента (и так же гаснет).
+            let ctx = ui.ctx().clone();
+            let hover = Motion::of(&ctx).toggle(&ctx, Id::new("drop-zone"), hovering_files, motion::STATE);
+            let fill = p.card.lerp_to_gamma(p.soft(p.accent), hover);
+            let stroke = Stroke::new(1.0 + 0.5 * hover, p.border.lerp_to_gamma(p.accent, hover));
             egui::Frame::new()
                 .fill(fill)
                 .stroke(stroke)
@@ -453,77 +474,111 @@ fn queue(app: &mut App, ui: &mut Ui, tr: &Tr, hovering_files: bool) {
                         w::empty_state(ui, Icon::Film, tr.queue_empty, tr.queue_empty_hint);
                         return;
                     }
-                    jobs(app, ui, tr);
+                    jobs(app, ui, tr, lang);
                 });
         },
     );
 }
 
-fn jobs(app: &mut App, ui: &mut Ui, tr: &Tr) {
+fn jobs(app: &mut App, ui: &mut Ui, tr: &Tr, lang: Lang) {
     let p = Palette::of(ui);
+    // Чья ошибка случилась только что: такая строка «встряхнётся» один раз.
+    let shakes: Vec<bool> = app.jobs.iter_mut().map(|j| std::mem::take(&mut j.shake)).collect();
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         let mut to_remove: Option<u64> = None;
         let count = app.jobs.len();
         for (i, job) in app.jobs.iter().enumerate() {
             let name = job.input.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             let out_name = job.output.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let is_pending = matches!(job.status, JobStatus::Pending);
+            let running = matches!(job.status, JobStatus::Running(_));
 
-            // Кнопка удаления прижата вправо; остальное занимает оставшуюся ширину.
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                if is_pending && w::icon_button(ui, Icon::Trash, tr.remove_from_queue).clicked() {
-                    to_remove = Some(job.id);
-                }
-                ui.vertical(|ui| {
-                    ui.set_width(ui.available_width());
-                    ui.add(
-                        egui::Label::new(RichText::new(&name).font(anvil_ui::semibold(14.0)).color(p.text)).truncate(),
-                    )
-                    .on_hover_text(job.input.display().to_string());
-                    ui.add(
-                        egui::Label::new(RichText::new(format!("→ {out_name}")).size(12.5).color(p.weak)).truncate(),
-                    )
-                    .on_hover_text(job.output.display().to_string());
-                    let info_line = texts::format_media_info(&job.info);
-                    if !info_line.is_empty() {
-                        ui.add(egui::Label::new(RichText::new(info_line).size(12.5).color(p.weak)).truncate());
-                    }
-                    ui.add_space(2.0);
-                    match &job.status {
-                        JobStatus::Pending => {
-                            w::badge(ui, tr.pending, Tone::Neutral);
+            // Новая строка выходит мягко (прозрачность + сдвиг), соседние — с шагом друг за другом.
+            fx::enter(ui, ("job", job.id), i, |ui| {
+                // Ошибка — короткая встряска строки: «не вышло», без всплывающих окон.
+                fx::shake(ui, ("job-shake", job.id), shakes[i], 6.0, |ui| {
+                    // Кнопка удаления прижата вправо; остальное занимает оставшуюся ширину.
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                        // Убрать можно всё, что не считается прямо сейчас (в том числе ошибку и готовое).
+                        if !running && w::icon_button(ui, Icon::Trash, tr.remove_from_queue).clicked() {
+                            to_remove = Some(job.id);
                         }
-                        JobStatus::Running(pct) => {
-                            ui.horizontal(|ui| {
-                                let width = (ui.available_width() - 50.0).max(40.0);
-                                w::progress(ui, Some(pct / 100.0), width);
-                                ui.label(RichText::new(format!("{pct:.0}%")).color(p.text));
-                            });
-                        }
-                        JobStatus::Done => {
-                            w::badge(ui, tr.done, Tone::Success);
-                        }
-                        JobStatus::Failed(msg) => {
-                            ui.horizontal(|ui| {
-                                w::badge(ui, tr.error, Tone::Danger);
-                                ui.add(egui::Label::new(RichText::new(msg).color(p.danger)).truncate())
-                                    .on_hover_text(msg);
-                            });
-                        }
-                    }
+                        ui.vertical(|ui| {
+                            ui.set_width(ui.available_width());
+                            ui.add(
+                                egui::Label::new(RichText::new(&name).font(anvil_ui::semibold(14.0)).color(p.text))
+                                    .truncate(),
+                            )
+                            .on_hover_text(job.input.display().to_string());
+                            ui.add(
+                                egui::Label::new(RichText::new(format!("→ {out_name}")).size(12.5).color(p.weak))
+                                    .truncate(),
+                            )
+                            .on_hover_text(job.output.display().to_string());
+                            if job.info_ready {
+                                let info_line = texts::format_media_info(&job.info);
+                                if !info_line.is_empty() {
+                                    ui.add(
+                                        egui::Label::new(RichText::new(info_line).size(12.5).color(p.weak)).truncate(),
+                                    );
+                                }
+                            } else {
+                                // ffprobe ещё читает файл: на месте сведений — «скелетон» с бегущим бликом.
+                                fx::skeleton(ui, egui::vec2(180.0, 13.0));
+                            }
+                            ui.add_space(2.0);
+                            job_status(ui, job, tr, lang);
+                        });
+                    });
                 });
+                if i + 1 < count {
+                    ui.add_space(6.0);
+                    w::divider(ui);
+                    ui.add_space(6.0);
+                }
             });
-            if i + 1 < count {
-                ui.add_space(6.0);
-                w::divider(ui);
-                ui.add_space(6.0);
-            }
         }
 
         if let Some(id) = to_remove {
             app.jobs.retain(|j| j.id != id);
         }
     });
+}
+
+/// Состояние задания: ожидание, ход (с неопределённым, пока длительность неизвестна), готово, ошибка.
+fn job_status(ui: &mut Ui, job: &app::Job, tr: &Tr, lang: Lang) {
+    let p = Palette::of(ui);
+    match &job.status {
+        JobStatus::Pending => {
+            w::badge(ui, tr.pending, Tone::Neutral);
+        }
+        JobStatus::Running(pct) => {
+            ui.horizontal(|ui| {
+                let width = (ui.available_width() - 50.0).max(40.0);
+                if job.info.duration.is_some_and(|d| d > 0.0) {
+                    w::progress(ui, Some(pct / 100.0), width);
+                    ui.label(RichText::new(format!("{pct:.0}%")).color(p.text));
+                } else {
+                    // Длительность неизвестна — процент честно посчитать нельзя, полоса «бежит».
+                    w::progress(ui, None, width);
+                }
+            });
+        }
+        JobStatus::Done => {
+            ui.horizontal(|ui| {
+                // Круг «щёлкает» на место, галочка дорисовывается — один раз, когда задание завершилось.
+                fx::result_mark(ui, ("result", job.id), true, 20.0);
+                w::badge(ui, tr.done, Tone::Success);
+            });
+        }
+        JobStatus::Failed(failure) => {
+            let (short, full) = texts::failure_text(failure, lang);
+            ui.horizontal(|ui| {
+                fx::result_mark(ui, ("result", job.id), false, 20.0);
+                w::badge(ui, tr.error, Tone::Danger);
+                ui.add(egui::Label::new(RichText::new(short).color(p.danger)).truncate()).on_hover_text(full);
+            });
+        }
+    }
 }
 
 /// Окно настроек: общие для семьи (тема, язык, обновления) и свои — поведение, ffmpeg, вывод.
@@ -739,13 +794,25 @@ fn startup_geometry(app: &mut App, ctx: &egui::Context, bars_h: f32, settings_co
         }
     } else {
         // Окно показано: запоминаем изменения размера/позиции, сделанные пользователем.
+        let now = ctx.input(|i| i.time);
+        // Свёрнутое окно Windows «стоит» в точке около (−32000, −32000): её запоминать нельзя.
+        let minimized = ctx.input(|i| i.viewport().minimized.unwrap_or(false));
         let size = ctx.content_rect().size();
-        if let Some(min) = ctx.input(|i| i.viewport().outer_rect.map(|r| r.min)) {
+        if !minimized && let Some(min) = ctx.input(|i| i.viewport().outer_rect.map(|r| r.min)) {
             let cur = [size.x, size.y, min.x, min.y];
             let changed = app.config.geometry.is_none_or(|g| g.iter().zip(cur).any(|(a, b)| (a - b).abs() > 3.0));
-            if changed {
+            if changed && crate::config::sane_geometry(&cur) {
                 app.config.geometry = Some(cur);
+                app.geometry_changed_at = Some(now);
+            }
+        }
+        // В файл — когда окно перестали тянуть: иначе запись шла бы на каждый кадр перетаскивания.
+        if let Some(at) = app.geometry_changed_at {
+            if now - at >= 0.6 {
                 app.persist();
+                app.geometry_changed_at = None;
+            } else {
+                ctx.request_repaint_after(std::time::Duration::from_millis(650));
             }
         }
     }
