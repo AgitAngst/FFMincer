@@ -1,6 +1,6 @@
 [package]
 name = "ffmincer"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Audio and video converter on top of ffmpeg"
 license = "MIT"
@@ -19,8 +19,8 @@ eframe = "0.36.2"
 rfd = "0.17.2"
 
 [build-dependencies]
-anvil-ui = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.6.1" }
-image = { version = "0.25.10", default-features = false, features = ["png", "ico"] }
+# PNG значка окна — в сырые пиксели; значок exe — ресурс из `assets/icon/ffmincer.ico`.
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 winresource = "0.1"
 
 [profile.release]

@@ -17,6 +17,7 @@ use crate::texts::{self, BitrateKind, Preset, Tr, tip};
 fn info(lang: Lang) -> AppInfo {
     AppInfo {
         name: "FFMincer",
+        // Поле набора; знак рисует `mark.rs` (значок из `Icon` тут не показывается).
         icon: Icon::Film,
         version: env!("CARGO_PKG_VERSION"),
         tagline: texts::strings(lang).subtitle,
@@ -39,7 +40,7 @@ pub fn draw(app: &mut App, ui: &mut Ui) {
     settings_dialog(app, &ctx, lang);
     let info = info(lang);
     let status = anvil_update::ui::about_status(&ctx, &app.updater);
-    if chrome::about(&ctx, &mut app.show_about, &info, status.as_deref()) == Some(AboutAction::CheckUpdates) {
+    if crate::mark::about(&ctx, &mut app.show_about, &info, status.as_deref()) == Some(AboutAction::CheckUpdates) {
         app.updater.check(app.config.common.prerelease, None, true);
     }
 }
@@ -49,7 +50,7 @@ fn top_bar(app: &mut App, ui: &mut Ui, lang: Lang) -> f32 {
     let before = ui.available_rect_before_wrap().top();
     chrome::top_bar(ui, |ui| {
         let p = Palette::of(ui);
-        chrome::brand(ui, Icon::Film, "FFMincer");
+        crate::mark::brand(ui, "FFMincer");
         ui.add_space(10.0);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let gear = w::icon_button(ui, Icon::Gear, tip(lang, "Меню", "Menu"));

@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon/ffmincer-128.png" width="96" alt="FFMincer"></p>
+
 # FFMincer 🥩
 
 Простой конвертер аудио и видео с GUI на Rust (egui) поверх `ffmpeg`.
