@@ -13,8 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 # Общий вид и обновления семьи Anvil. Правка набора на живую — `[patch]` в .cargo/config.toml (не в git).
-anvil-ui = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.6.1" }
-anvil-update = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v0.6.1" }
+anvil-ui = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v1.0.0" }
+anvil-update = { git = "https://github.com/AgitAngst/Anvil", tag = "kit-v1.0.0" }
 eframe = "0.36.2"
 rfd = "0.17.2"
 
